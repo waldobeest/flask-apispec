@@ -37,15 +37,22 @@ class FlaskApiSpec:
     :param APISpec spec: apispec specification associated with API documentation
     :param bool document_options: Whether or not to include
         OPTIONS requests in the specification
+    :param str blueprint_name: Specify a name for the blueprint
+    :param str swagger_url: Specify a path for serving the swagger json
+    :param str swagger_ui_url: Specify a path for serving the swagger ui
     """
 
-    def __init__(self, app=None, document_options=True):
+    def __init__(self, app=None, document_options=True, blueprint_name='flask-apispec',
+                 swagger_url=None, swagger_ui_url=None):
         self._deferred = []
         self.app = app
         self.view_converter = None
         self.resource_converter = None
         self.spec = None
         self.document_options = document_options
+        self.blueprint_name = blueprint_name
+        self.json_url_override = swagger_url
+        self.ui_url_override = swagger_ui_url
 
         if app:
             self.init_app(app)
@@ -72,19 +79,22 @@ class FlaskApiSpec:
             bound()
 
     def add_swagger_routes(self):
+        json_url = self.json_url_override or self.app.config.get(
+            'APISPEC_SWAGGER_URL', '/swagger/')
+        ui_url = self.ui_url_override or self.app.config.get(
+            'APISPEC_SWAGGER_UI_URL', '/swagger-ui/')
+
         blueprint = flask.Blueprint(
-            'flask-apispec',
+            self.blueprint_name,
             __name__,
             static_folder='./static',
             template_folder='./templates',
-            static_url_path='/flask-apispec/static',
+            static_url_path=f'/{ui_url or "flask-apispec"}/static',
         )
 
-        json_url = self.app.config.get('APISPEC_SWAGGER_URL', '/swagger/')
         if json_url:
             blueprint.add_url_rule(json_url, 'swagger-json', self.swagger_json)
 
-        ui_url = self.app.config.get('APISPEC_SWAGGER_UI_URL', '/swagger-ui/')
         if ui_url:
             blueprint.add_url_rule(ui_url, 'swagger-ui', self.swagger_ui)
 
@@ -94,7 +104,8 @@ class FlaskApiSpec:
         return flask.jsonify(self.spec.to_dict())
 
     def swagger_ui(self):
-        return flask.render_template('swagger-ui.html')
+        context = {'blueprint_name': self.blueprint_name}
+        return flask.render_template('swagger-ui.html', **context)
 
     def register_existing_resources(self):
         for name, rule in self.app.view_functions.items():
